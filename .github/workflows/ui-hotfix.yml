@@ -17,36 +17,11 @@ jobs:
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          marker="let S={},P={};"
-          inject="""let S={},P={};const UI={lv:document.getElementById('lv'),wa:document.getElementById('wa'),ki:document.getElementById('ki'),sc:document.getElementById('sc'),go:document.getElementById('go'),hp:document.getElementById('hp'),xp:document.getElementById('xp'),bb:document.getElementById('bb'),bn:document.getElementById('bn'),bh:document.getElementById('bh'),start:document.getElementById('start'),up:document.getElementById('up'),pause:document.getElementById('pause'),board:document.getElementById('board'),over:document.getElementById('over'),choices:document.getElementById('choices'),tbl:document.getElementById('tbl'),res:document.getElementById('res'),play:document.getElementById('play'),again:document.getElementById('again'),lb0:document.getElementById('lb0'),lb1:document.getElementById('lb1'),closeBtn:document.getElementById('close')};"""
-          if marker in s and "const UI={" not in s:
-              s=s.replace(marker,inject,1)
-          reps={
-            "pause.style.display":"UI.pause.style.display",
-            "start.style.display=over.style.display=board.style.display='none'":"UI.start.style.display=UI.over.style.display=UI.board.style.display='none'",
-            "choices.innerHTML":"UI.choices.innerHTML",
-            "choices.appendChild":"UI.choices.appendChild",
-            "up.style.display":"UI.up.style.display",
-            "lv.textContent":"UI.lv.textContent",
-            "wa.textContent":"UI.wa.textContent",
-            "ki.textContent":"UI.ki.textContent",
-            "sc.textContent":"UI.sc.textContent",
-            "go.textContent":"UI.go.textContent",
-            "hp.style.width":"UI.hp.style.width",
-            "xp.style.width":"UI.xp.style.width",
-            "bb.style.display":"UI.bb.style.display",
-            "bn.textContent":"UI.bn.textContent",
-            "bh.style.width":"UI.bh.style.width",
-            "res.innerHTML":"UI.res.innerHTML",
-            "tbl.innerHTML":"UI.tbl.innerHTML",
-            "board.style.display":"UI.board.style.display",
-            "play.onclick=reset":"UI.play.onclick=reset",
-            "again.onclick=reset":"UI.again.onclick=reset",
-            "lb0.onclick=lb1.onclick=showBoard":"UI.lb0.onclick=UI.lb1.onclick=showBoard",
-            "close.onclick=()=>UI.board.style.display='none'":"UI.closeBtn.onclick=()=>UI.board.style.display='none'",
-            "close.onclick=()=>board.style.display='none'":"UI.closeBtn.onclick=()=>UI.board.style.display='none'"
-          }
-          for a,b in reps.items(): s=s.replace(a,b)
+          s=s.replace('UI.UI.','UI.')
+          s=s.replace("play.onclick=reset","UI.play.onclick=reset")
+          s=s.replace("again.onclick=reset","UI.again.onclick=reset")
+          s=s.replace("lb0.onclick=lb1.onclick=showBoard","UI.lb0.onclick=UI.lb1.onclick=showBoard")
+          s=s.replace("close.onclick=()=>board.style.display='none'","UI.closeBtn.onclick=()=>UI.board.style.display='none'")
           p.write_text(s,encoding='utf-8')
           PY
       - name: Commit fix
@@ -55,6 +30,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --quiet; then
             git add index.html
-            git commit -m 'Fix HUD DOM references and Start Run runtime crash'
+            git commit -m 'Fix duplicated UI references'
             git push
           fi
