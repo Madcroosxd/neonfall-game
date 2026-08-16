@@ -11,17 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch DOM element references
+      - name: Patch remaining UI references
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          s=s.replace('UI.UI.','UI.')
-          s=s.replace("play.onclick=reset","UI.play.onclick=reset")
-          s=s.replace("again.onclick=reset","UI.again.onclick=reset")
-          s=s.replace("lb0.onclick=lb1.onclick=showBoard","UI.lb0.onclick=UI.lb1.onclick=showBoard")
-          s=s.replace("close.onclick=()=>board.style.display='none'","UI.closeBtn.onclick=()=>UI.board.style.display='none'")
+          while 'UI.UI.' in s:
+              s=s.replace('UI.UI.','UI.')
+          s=s.replace(";over.style.display='flex'",";UI.over.style.display='flex'")
+          s=s.replace("UI.play.onclick=reset","UI.play.onclick=reset")
+          s=s.replace("UI.again.onclick=reset","UI.again.onclick=reset")
           p.write_text(s,encoding='utf-8')
           PY
       - name: Commit fix
@@ -30,6 +30,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --quiet; then
             git add index.html
-            git commit -m 'Fix duplicated UI references'
+            git commit -m 'Fix Start Run event handlers and game over UI'
             git push
           fi
