@@ -1,3 +1,4 @@
+# verification run 5
 name: Browser gameplay test
 on:
   push:
@@ -34,7 +35,7 @@ jobs:
           await page.locator('#play').click();
           await page.waitForTimeout(500);
           const startDisplay = await page.locator('#start').evaluate(el=>getComputedStyle(el).display);
-          if(startDisplay !== 'none') throw new Error('START overlay did not close: '+startDisplay);
+          if(startDisplay !== 'none') throw new Error('START overlay did not close: '+startDisplay+' errors='+errors.join(' | '));
           await page.keyboard.down('d');
           await page.waitForTimeout(700);
           await page.keyboard.up('d');
