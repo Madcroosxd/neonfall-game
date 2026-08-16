@@ -28,19 +28,20 @@ jobs:
           page.on('pageerror',e=>errors.push(String(e)));
           page.on('console',m=>{if(m.type()==='error')errors.push('console: '+m.text())});
           await page.goto('http://127.0.0.1:8000/',{waitUntil:'networkidle'});
-          await page.locator('#play').click();
+          await page.locator('#playBtn').click();
           await page.waitForTimeout(300);
-          await page.evaluate(()=>{S.orbTimer=0});
+          await page.evaluate(()=>{state.orbTimer=0});
           await page.waitForTimeout(500);
-          const orbCount=await page.evaluate(()=>S.orbs.length);
-          if(orbCount<1) throw new Error('Orb did not spawn; errors='+errors.join(' | '));
-          await page.evaluate(()=>{const o=S.orbs[0]; o.x=P.x; o.y=P.y;});
+          const orbCount=await page.evaluate(()=>state.orbs.length);
+          if(orbCount<1)throw new Error('Orb did not spawn; '+errors.join(' | '));
+          await page.evaluate(()=>{const o=state.orbs[0];o.x=player.x;o.y=player.y});
           await page.waitForTimeout(500);
-          const state=await page.evaluate(()=>({orbs:S.orbs.length,freeze:S.freeze,rate:S.rateBoost,dmg:S.dmgBoost,run:S.run}));
-          if(errors.length) throw new Error('Orb runtime errors: '+errors.join(' | '));
-          if(!state.run) throw new Error('Game stopped during orb lifecycle');
-          if(state.orbs!==0) throw new Error('Orb was not collected: '+JSON.stringify(state));
-          console.log('PASS orb lifecycle',state);
+          const s=await page.evaluate(()=>({orbs:state.orbs.length,freeze:state.freezeTimer,rate:state.rateBuff,damage:state.damageBuff,running:state.running}));
+          if(errors.length)throw new Error('Orb runtime errors: '+errors.join(' | '));
+          if(!s.running)throw new Error('Game stopped during orb lifecycle');
+          if(s.orbs!==0)throw new Error('Orb was not collected: '+JSON.stringify(s));
+          if(!(s.freeze>0||s.rate>0||s.damage>0))throw new Error('Orb effect was not applied: '+JSON.stringify(s));
+          console.log('PASS: orb spawn, draw, pickup and buff lifecycle work',s);
           await browser.close();
           EOF
           node orb-test.mjs
