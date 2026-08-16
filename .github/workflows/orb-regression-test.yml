@@ -1,0 +1,46 @@
+name: Orb regression browser test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: |
+          npm init -y
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8000 > /tmp/server.log 2>&1 &
+          sleep 2
+      - name: Force orb lifecycle
+        run: |
+          cat > orb-test.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage({viewport:{width:1280,height:800}});
+          const errors=[];
+          page.on('pageerror',e=>errors.push(String(e)));
+          page.on('console',m=>{if(m.type()==='error')errors.push('console: '+m.text())});
+          await page.goto('http://127.0.0.1:8000/',{waitUntil:'networkidle'});
+          await page.locator('#play').click();
+          await page.waitForTimeout(300);
+          await page.evaluate(()=>{S.orbTimer=0});
+          await page.waitForTimeout(500);
+          const orbCount=await page.evaluate(()=>S.orbs.length);
+          if(orbCount<1) throw new Error('Orb did not spawn; errors='+errors.join(' | '));
+          await page.evaluate(()=>{const o=S.orbs[0]; o.x=P.x; o.y=P.y;});
+          await page.waitForTimeout(500);
+          const state=await page.evaluate(()=>({orbs:S.orbs.length,freeze:S.freeze,rate:S.rateBoost,dmg:S.dmgBoost,run:S.run}));
+          if(errors.length) throw new Error('Orb runtime errors: '+errors.join(' | '));
+          if(!state.run) throw new Error('Game stopped during orb lifecycle');
+          if(state.orbs!==0) throw new Error('Orb was not collected: '+JSON.stringify(state));
+          console.log('PASS orb lifecycle',state);
+          await browser.close();
+          EOF
+          node orb-test.mjs
