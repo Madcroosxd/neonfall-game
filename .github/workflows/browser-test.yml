@@ -1,0 +1,55 @@
+name: Browser gameplay test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - name: Start local server
+        run: |
+          python3 -m http.server 8000 > /tmp/neonfall-server.log 2>&1 &
+          sleep 2
+      - name: Play the game automatically
+        run: |
+          cat > /tmp/test-neonfall.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage({viewport:{width:1280,height:800}});
+          const errors=[];
+          page.on('pageerror',e=>errors.push(String(e)));
+          page.on('console',m=>{ if(m.type()==='error') errors.push('console: '+m.text()); });
+          await page.goto('http://127.0.0.1:8000/',{waitUntil:'networkidle'});
+          await page.locator('#name').fill('AutoPilot');
+          await page.locator('#play').click();
+          await page.waitForTimeout(500);
+          const startDisplay = await page.locator('#start').evaluate(el=>getComputedStyle(el).display);
+          if(startDisplay !== 'none') throw new Error('START overlay did not close: '+startDisplay);
+          await page.keyboard.down('d');
+          await page.waitForTimeout(700);
+          await page.keyboard.up('d');
+          const canvas=page.locator('#g');
+          const box=await canvas.boundingBox();
+          if(!box) throw new Error('Canvas not visible');
+          await page.mouse.move(box.x+900,box.y+400);
+          await page.mouse.down();
+          await page.waitForTimeout(700);
+          await page.mouse.up();
+          await page.waitForTimeout(1000);
+          const hud=await page.locator('#wa').textContent();
+          if(!hud || !hud.includes('Wave')) throw new Error('HUD is not updating');
+          if(errors.length) throw new Error('Browser errors: '+errors.join(' | '));
+          console.log('PASS: Start Run works, movement works, shooting works, HUD works.');
+          await browser.close();
+          EOF
+          node /tmp/test-neonfall.mjs
