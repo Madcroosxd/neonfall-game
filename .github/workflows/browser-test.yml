@@ -1,4 +1,4 @@
-# verification run 6
+# verification run 7
 name: Browser gameplay test
 on:
   push:
@@ -50,7 +50,7 @@ jobs:
           const hud=await page.locator('#wa').textContent();
           if(!hud || !hud.includes('Wave')) throw new Error('HUD is not updating');
           if(errors.length) throw new Error('Browser errors: '+errors.join(' | '));
-          console.log('PASS: Start Run works, movement works, shooting works, HUD works.');
+          console.log('PASS: v3 starts, moves, shoots and HUD updates.');
           await browser.close();
           EOF
           node ./test-neonfall.mjs
