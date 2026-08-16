@@ -11,9 +11,87 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build v3
+      - name: Apply v3 gameplay patch
         shell: bash
         run: |
-          cat > index.html <<'EOF'
-          <!doctype html>
-          <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEONFALL: XENO HUNT v
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          # Larger logical battlefield.
+          s=s.replace("W=1280,H=800", "W=1600,H=1000")
+          s=s.replace("M={x:640,y:400,d:0}", "M={x:800,y:500,d:0}")
+          s=s.replace("P={x:640,y:420,r:16", "P={x:800,y:520,r:18")
+          s=s.replace("r=520,xp0=640+Math.cos(a)*r,yp0=420+Math.sin(a)*r", "r=690,xp0=800+Math.cos(a)*r,yp0=520+Math.sin(a)*r")
+
+          # Persistent wave field + orb state.
+          s=s.replace("obs:[],pilot:", "obs:[],orbs:[],orbTimer:60,freeze:0,rateBoost:0,dmgBoost:0,lastBoss:0,pilot:")
+
+          # Faster XP curve after midgame.
+          s=s.replace("P.nxp=Math.floor(P.nxp*1.35+14)", "P.nxp=Math.floor(P.nxp*1.22+10)")
+          s=s.replace("v:e.xp});", "v:Math.ceil(e.xp*1.25)});")
+
+          # Larger charging alien.
+          s=s.replace("brute:[27,150,48,18", "brute:[40,190,46,22")
+
+          # Boss spawn: distinct identity/model + difficulty.
+          old="S.en.push({x:640,y:120,r:56,hp:2400+S.w*420,mhp:2400+S.w*420,spd:55,dmg:28,col:'#ff2d76',xp:300,boss:1,name:names[(S.w/5-1)%4|0],shot:1,phase:0});"
+          new="let bt=((S.w/5-1)%4|0);let hpv=3000+S.w*520;S.en.push({x:800,y:150,r:68,hp:hpv,mhp:hpv,spd:48+bt*5,dmg:30+bt*3,col:['#ff2d76','#a75cff','#ff7b31','#70ffe3'][bt],xp:380,boss:1,btype:bt,name:names[bt],shot:.9,phase:0,rot:0});"
+          s=s.replace(old,new)
+
+          # Bosses no longer wait until the field is empty. Wave transitions never delete active enemies.
+          s=s.replace("if(!S.boss&&S.w%5===0&&S.en.length===0)spawn('',1);", "if(!S.boss&&S.w%5===0&&S.lastBoss!==S.w){spawn('',1);S.lastBoss=S.w;}")
+          s=s.replace("if(!S.boss&&S.w%5!==0&&S.t>S.w*30){S.w++;S.en=[];build()}", "if(!S.boss&&S.w%5!==0&&S.t>S.w*30){S.w++;}")
+
+          # Orb helpers: spawn every 60s, temporary attack speed / freeze / damage.
+          marker="function shoot(){"
+          helpers="""function spawnOrb(){let types=['rate','freeze','damage'];let type=types[Math.floor(Math.random()*types.length)];S.orbs.push({x:120+Math.random()*(W-240),y:130+Math.random()*(H-220),r:15,type,life:22});}function takeOrb(o){if(o.type==='rate'&&!S.rateBoost){P.rate*=1.5;S.rateBoost=12;}else if(o.type==='damage'&&!S.dmgBoost){P.dmg*=1.55;S.dmgBoost=12;}else if(o.type==='freeze'){S.freeze=Math.max(S.freeze,6);}o.dead=1;}"""
+          if helpers not in s: s=s.replace(marker,helpers+marker,1)
+
+          # Buff timers + orb timer.
+          target="P.inv=Math.max(0,P.inv-dt);"
+          repl="P.inv=Math.max(0,P.inv-dt);S.orbTimer-=dt;S.freeze=Math.max(0,S.freeze-dt);if(S.rateBoost>0){S.rateBoost-=dt;if(S.rateBoost<=0){P.rate/=1.5;S.rateBoost=0;}}if(S.dmgBoost>0){S.dmgBoost-=dt;if(S.dmgBoost<=0){P.dmg/=1.55;S.dmgBoost=0;}}if(S.orbTimer<=0){spawnOrb();S.orbTimer=60;}"
+          s=s.replace(target,repl)
+
+          # Orb lifetime and pickup.
+          target="for(let g of S.gem){"
+          orbcode="for(let o of S.orbs){o.life-=dt;if(Math.hypot(P.x-o.x,P.y-o.y)<P.r+o.r+7)takeOrb(o);}S.orbs=S.orbs.filter(o=>!o.dead&&o.life>0);"
+          s=s.replace(target,orbcode+target)
+
+          # Freeze actually stops aliens/bosses; give each boss its own shot pattern.
+          pat=r"e\.shot-=dt;if\(\(e\.type==='spitter'\|\|e\.boss\)&&e\.shot<=0\)\{e\.shot=e\.boss\?\.75:2\.2;let n=e\.boss\?8:1;for\(let i=0;i<n;i\+\+\)\{let q=e\.boss\?i\*Math\.PI\*2/n:a;S\.bu\.push\(\{x:e\.x,y:e\.y,vx:Math\.cos\(q\)\*260,vy:Math\.sin\(q\)\*260,r:e\.boss\?7:5,dmg:e\.boss\?17:e\.dmg,life:4,enemy:1,p:99\}\)\}\}"
+          rep="""if(S.freeze<=0){e.shot-=dt;if((e.type==='spitter'||e.boss)&&e.shot<=0){if(!e.boss){e.shot=2.05;S.bu.push({x:e.x,y:e.y,vx:Math.cos(a)*300,vy:Math.sin(a)*300,r:5,dmg:e.dmg,life:5,enemy:1,p:99});}else{let bt=e.btype||0;if(bt===0){e.shot=.78;for(let i=0;i<12;i++){let q=i*Math.PI*2/12+S.t*.18;S.bu.push({x:e.x,y:e.y,vx:Math.cos(q)*285,vy:Math.sin(q)*285,r:7,dmg:18,life:5,enemy:1,p:99});}}else if(bt===1){e.shot=1.05;for(let i=-2;i<=2;i++){let q=a+i*.16;S.bu.push({x:e.x,y:e.y,vx:Math.cos(q)*390,vy:Math.sin(q)*390,r:8,dmg:21,life:4,enemy:1,p:99});}}else if(bt===2){e.shot=.34;e.rot=(e.rot||0)+.45;for(let i=0;i<3;i++){let q=e.rot+i*Math.PI*2/3;S.bu.push({x:e.x,y:e.y,vx:Math.cos(q)*325,vy:Math.sin(q)*325,r:6,dmg:16,life:5,enemy:1,p:99});}}else{e.shot=1.25;for(let i=0;i<16;i++){let q=i*Math.PI*2/16;let sp=i%2?230:420;S.bu.push({x:e.x,y:e.y,vx:Math.cos(q)*sp,vy:Math.sin(q)*sp,r:7,dmg:20,life:5,enemy:1,p:99});}for(let i=-1;i<=1;i++){let q=a+i*.1;S.bu.push({x:e.x,y:e.y,vx:Math.cos(q)*480,vy:Math.sin(q)*480,r:9,dmg:24,life:4,enemy:1,p:99});}}}}}"""
+          s=re.sub(pat,rep,s,count=1)
+          s=s.replace("e.x+=Math.cos(a)*e.spd*dt;e.y+=Math.sin(a)*e.spd*dt;", "if(S.freeze<=0){e.x+=Math.cos(a)*e.spd*dt;e.y+=Math.sin(a)*e.spd*dt;}")
+
+          # Draw orbs before enemies.
+          drawmarker="for(let g of S.gem){x.fillStyle='#55eaff';"
+          draworb="for(let o of S.orbs){x.save();x.shadowBlur=25;x.shadowColor=o.type==='rate'?'#ffe857':o.type==='freeze'?'#70e9ff':'#ff654f';x.fillStyle=x.shadowColor;x.beginPath();x.arc(o.x,o.y,o.r+Math.sin(S.t*5)*3,0,Math.PI*2);x.fill();x.fillStyle='#fff';x.font='bold 13px Arial';x.textAlign='center';x.fillText(o.type==='rate'?'AS':o.type==='freeze'?'ICE':'DMG',o.x,o.y+4);x.restore();}"
+          s=s.replace(drawmarker,draworb+drawmarker)
+
+          # Replace spaceship with a top-down space marine.
+          s=re.sub(r"function ship\(\)\{.*?x\.restore\(\)\}", """function ship(){let a=Math.atan2(M.y-P.y,M.x-P.x);x.save();x.translate(P.x,P.y);x.rotate(a);x.shadowBlur=14;x.shadowColor='#55dfff';x.fillStyle='#17253a';x.beginPath();x.arc(-2,0,17,0,Math.PI*2);x.fill();x.fillStyle='#60758f';x.fillRect(-12,-14,24,28);x.fillStyle='#b9d7e6';x.beginPath();x.arc(7,0,9,0,Math.PI*2);x.fill();x.fillStyle='#16212d';x.fillRect(-6,-22,9,14);x.fillRect(-6,8,9,14);x.strokeStyle='#9ef3ff';x.lineWidth=7;x.beginPath();x.moveTo(6,0);x.lineTo(31,0);x.stroke();x.fillStyle='#67edff';x.fillRect(28,-4,13,8);x.restore()}""",s,count=1,flags=re.S)
+
+          # Armed shooter + distinct boss silhouettes.
+          s=s.replace("else if(e.type==='spitter'){poly(0,0,e.r,5);x.fillStyle='#061d19';x.beginPath();x.arc(0,0,7,0,7);x.fill()}", "else if(e.type==='spitter'){poly(0,0,e.r,5);x.fillStyle='#061d19';x.beginPath();x.arc(0,0,7,0,7);x.fill();x.strokeStyle='#d8fff7';x.lineWidth=5;x.beginPath();x.moveTo(5,0);x.lineTo(27,0);x.stroke()}")
+          bossold="x.fillStyle='#2b0716';x.beginPath();x.arc(0,0,e.r,0,7);x.fill();x.fillStyle='#ffe6da';x.beginPath();x.ellipse(8,0,26,15,0,0,7);x.fill();x.fillStyle='#090006';x.beginPath();x.ellipse(16,0,7,13,0,0,7);x.fill()"
+          bossnew="let bt=e.btype||0;if(bt===0){x.fillStyle='#2b0716';poly(0,0,e.r,9,S.t*.1);x.fillStyle='#ffe6da';x.beginPath();x.ellipse(12,0,30,17,0,0,7);x.fill();}else if(bt===1){x.fillStyle='#24113e';x.beginPath();x.arc(0,0,e.r,0,7);x.fill();for(let i=0;i<6;i++){x.fillStyle='#b98cff';x.beginPath();x.arc(Math.cos(i*Math.PI/3)*40,Math.sin(i*Math.PI/3)*40,10,0,7);x.fill();}}else if(bt===2){x.fillStyle='#421408';poly(0,0,e.r,5,-Math.PI/2);x.fillStyle='#ffb02e';for(let i=0;i<3;i++){x.beginPath();x.arc(18+i*9-18,0,7,0,7);x.fill();}}else{x.fillStyle='#07332d';poly(0,0,e.r,12,S.t*.15);x.fillStyle='#9ffff0';x.beginPath();x.arc(0,0,24,0,7);x.fill();}x.fillStyle='#090006';x.beginPath();x.arc(12,0,8,0,7);x.fill()"
+          s=s.replace(bossold,bossnew)
+
+          # Updated intro text.
+          s=s.replace("Uzay geminle hayatta kal. Her 5. wave korkutucu bir Xeno Guardian gelir.", "Uzay askerini hayatta tut. Düşmanlar wave geçince kaybolmaz; her 5. wave benzersiz bir Xeno boss gelir. Güç orblarını yakala!")
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit v3
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --quiet; then
+            git add index.html
+            git commit -m 'NEONFALL v3 persistent waves, marine, bosses, XP and orbs'
+            git push
+          fi
