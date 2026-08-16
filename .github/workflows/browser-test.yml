@@ -22,7 +22,7 @@ jobs:
           sleep 2
       - name: Play the game automatically
         run: |
-          cat > /tmp/test-neonfall.mjs <<'EOF'
+          cat > test-neonfall.mjs <<'EOF'
           import { chromium } from 'playwright';
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage({viewport:{width:1280,height:800}});
@@ -52,4 +52,4 @@ jobs:
           console.log('PASS: Start Run works, movement works, shooting works, HUD works.');
           await browser.close();
           EOF
-          node /tmp/test-neonfall.mjs
+          node ./test-neonfall.mjs
