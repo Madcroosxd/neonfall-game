@@ -1,0 +1,35 @@
+name: Neonfall startup hotfix
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hotfix.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch startup and enemy fire timing bugs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("pilot:(name.value.trim()||'Pilot').slice(0,14)", "pilot:(document.getElementById('name').value.trim()||'Pilot').slice(0,14)")
+          s = s.replace("function draw(){let bio=BI[Math.floor((S.w-1)/5)%BI.length];", "function draw(){if(!S.run){x.fillStyle='#050914';x.fillRect(0,0,W,H);return}let bio=BI[Math.floor((S.w-1)/5)%BI.length];")
+          s = s.replace("if((e.type==='spitter'||e.boss)&&--e.shot<=0){", "e.shot-=dt;if((e.type==='spitter'||e.boss)&&e.shot<=0){")
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit hotfix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --quiet; then
+            git add index.html
+            git commit -m 'Fix Start Run and enemy firing timing'
+            git push
+          fi
